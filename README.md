@@ -143,12 +143,15 @@ metrics:
 nexus/
 ├── cmd/nexus/              # 应用主入口
 ├── internal/
+│   ├── admin/              # Admin API（控制面）
+│   ├── auth/               # 认证鉴权（API Key、JWT）
+│   ├── circuitbreaker/     # 熔断器
 │   ├── config/             # 配置中心（加载、校验、版本管理）
-│   ├── proxy/              # 数据面（反向代理、路由、上游管理）
-│   ├── middleware/          # 可插拔中间件（鉴权、限流、日志、指标）
 │   ├── health/             # 健康探针（/healthz, /readyz）
-│   └── observability/      # 可观测性（日志、指标、追踪）
-├── api/v1/                 # Admin API
+│   ├── metrics/            # Prometheus 指标
+│   ├── middleware/          # 可插拔中间件（鉴权、限流、日志、指标）
+│   ├── proxy/              # 数据面（反向代理、路由、上游管理）
+│   └── ratelimit/          # 滑动窗口限流
 ├── configs/                # 配置文件示例
 ├── deployments/helm/       # Helm Chart
 ├── docs/                   # 技术设计文档
@@ -174,11 +177,11 @@ nexus/
 - [x] 架构设计与技术选型
 - [x] 技术方案详细设计（Phase 1–5）
 - [x] 高可用 / 高并发 / 可扩展性[技术评审](docs/review-high-availability-concurrency.md)
-- [ ] Phase 1 — 项目脚手架与基础路由 PoC
-- [ ] Phase 2 — 路由引擎、负载均衡与可观测性基座
-- [ ] Phase 3 — TLS、鉴权、限流、熔断
-- [ ] Phase 4 — 完整可观测体系与配置管理闭环
-- [ ] Phase 5 — Helm 打包、回滚流程、压测与上线 Runbook
+- [x] Phase 1 — 项目脚手架与基础路由 PoC
+- [x] Phase 2 — 路由引擎、负载均衡与可观测性基座
+- [x] Phase 3 — TLS、鉴权、限流、熔断
+- [x] Phase 4 — 完整可观测体系与配置管理闭环
+- [x] Phase 5 — Helm 打包、回滚流程、压测与上线 Runbook
 
 ## 🤝 贡献
 

@@ -1,0 +1,46 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/oriys/nexus-gateway
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  httpPort: 8080
+  httpsPort: 8443
+  adminPort: 9090
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+config:
+  server:
+    listen: ":8080"
+    read_timeout: 30s
+    write_timeout: 30s
+    shutdown_timeout: 30s
+  upstreams: []
+  routes: []
+  logging:
+    level: info
+    format: json
+  rate_limit:
+    enabled: false
+    rate: 100
+    window: 1m
+  auth:
+    api_key:
+      enabled: false
+      keys: {}
+  admin:
+    enabled: true
+    listen: ":9090"
+  metrics:
+    enabled: true
+    path: /metrics

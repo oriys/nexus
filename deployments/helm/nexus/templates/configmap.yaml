@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-nexus-config
+  labels:
+    app: nexus
+    release: {{ .Release.Name }}
+data:
+  nexus.yaml: |
+    {{- toYaml .Values.config | nindent 4 }}

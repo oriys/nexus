@@ -4,13 +4,15 @@ import "time"
 
 // Config is the top-level gateway configuration.
 type Config struct {
-	Server    ServerConfig    `yaml:"server"`
-	Upstreams []Upstream      `yaml:"upstreams"`
-	Routes    []Route         `yaml:"routes"`
-	Logging   LoggingConfig   `yaml:"logging"`
-	RateLimit RateLimitConfig `yaml:"rate_limit"`
-	Auth      AuthConfig      `yaml:"auth"`
-	Admin     AdminConfig     `yaml:"admin"`
+	Server         ServerConfig         `yaml:"server"`
+	Upstreams      []Upstream           `yaml:"upstreams"`
+	Routes         []Route              `yaml:"routes"`
+	Logging        LoggingConfig        `yaml:"logging"`
+	RateLimit      RateLimitConfig      `yaml:"rate_limit"`
+	Auth           AuthConfig           `yaml:"auth"`
+	Admin          AdminConfig          `yaml:"admin"`
+	CircuitBreaker CircuitBreakerConfig `yaml:"circuit_breaker"`
+	Metrics        MetricsConfig        `yaml:"metrics"`
 }
 
 // ServerConfig defines the HTTP server settings.
@@ -19,6 +21,15 @@ type ServerConfig struct {
 	ReadTimeout     time.Duration `yaml:"read_timeout"`
 	WriteTimeout    time.Duration `yaml:"write_timeout"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
+	TLS             TLSConfig     `yaml:"tls"`
+}
+
+// TLSConfig defines TLS settings for HTTPS termination.
+type TLSConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Listen   string `yaml:"listen"`
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
 }
 
 // Upstream defines a group of backend targets.
@@ -75,4 +86,18 @@ type APIKeyConfig struct {
 type AdminConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Listen  string `yaml:"listen"`
+}
+
+// CircuitBreakerConfig defines circuit breaker settings.
+type CircuitBreakerConfig struct {
+	Enabled          bool          `yaml:"enabled"`
+	FailureThreshold int           `yaml:"failure_threshold"`
+	SuccessThreshold int           `yaml:"success_threshold"`
+	Timeout          time.Duration `yaml:"timeout"`
+}
+
+// MetricsConfig defines Prometheus metrics settings.
+type MetricsConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Path    string `yaml:"path"`
 }

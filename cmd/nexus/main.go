@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,8 +12,10 @@ import (
 
 	"github.com/oriys/nexus/internal/admin"
 	"github.com/oriys/nexus/internal/auth"
+	"github.com/oriys/nexus/internal/circuitbreaker"
 	"github.com/oriys/nexus/internal/config"
 	"github.com/oriys/nexus/internal/health"
+	"github.com/oriys/nexus/internal/metrics"
 	"github.com/oriys/nexus/internal/middleware"
 	"github.com/oriys/nexus/internal/proxy"
 	"github.com/oriys/nexus/internal/ratelimit"
@@ -67,6 +70,12 @@ func main() {
 		middleware.Logging(),
 	}
 
+	// Add metrics middleware if enabled
+	if cfg.Metrics.Enabled {
+		middlewares = append(middlewares, middleware.Metrics())
+		slog.Info("prometheus metrics enabled")
+	}
+
 	// Add rate limiting middleware if enabled
 	if cfg.RateLimit.Enabled && cfg.RateLimit.Rate > 0 {
 		window := cfg.RateLimit.Window
@@ -92,12 +101,46 @@ func main() {
 
 	// Build handler with middleware chain
 	proxyHandler := proxy.NewProxy(router, upstreamMgr)
+
+	// Set up circuit breakers if enabled
+	if cfg.CircuitBreaker.Enabled {
+		failureThreshold := cfg.CircuitBreaker.FailureThreshold
+		if failureThreshold == 0 {
+			failureThreshold = 5
+		}
+		successThreshold := cfg.CircuitBreaker.SuccessThreshold
+		if successThreshold == 0 {
+			successThreshold = 2
+		}
+		timeout := cfg.CircuitBreaker.Timeout
+		if timeout == 0 {
+			timeout = 30 * time.Second
+		}
+		breakers := make(map[string]*circuitbreaker.CircuitBreaker)
+		for _, u := range cfg.Upstreams {
+			breakers[u.Name] = circuitbreaker.New(u.Name, failureThreshold, successThreshold, timeout)
+		}
+		proxyHandler.SetCircuitBreakers(breakers)
+		slog.Info("circuit breaker enabled",
+			slog.Int("failure_threshold", failureThreshold),
+			slog.Int("success_threshold", successThreshold),
+			slog.Duration("timeout", timeout),
+		)
+	}
+
 	handler := middleware.Chain(proxyHandler, middlewares...)
 
-	// Create mux with health endpoints
+	// Create mux with health and metrics endpoints
 	mux := http.NewServeMux()
 	mux.Handle("/healthz", checker.HealthzHandler())
 	mux.Handle("/readyz", checker.ReadyzHandler())
+	if cfg.Metrics.Enabled {
+		metricsPath := cfg.Metrics.Path
+		if metricsPath == "" {
+			metricsPath = "/metrics"
+		}
+		mux.Handle(metricsPath, metrics.Handler())
+	}
 	mux.Handle("/", handler)
 
 	// Configure server
@@ -106,6 +149,33 @@ func main() {
 		Handler:      mux,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
+	}
+
+	// Start TLS server if enabled
+	var tlsSrv *http.Server
+	if cfg.Server.TLS.Enabled && cfg.Server.TLS.CertFile != "" && cfg.Server.TLS.KeyFile != "" {
+		tlsListen := cfg.Server.TLS.Listen
+		if tlsListen == "" {
+			tlsListen = ":8443"
+		}
+		tlsSrv = &http.Server{
+			Addr:         tlsListen,
+			Handler:      mux,
+			ReadTimeout:  cfg.Server.ReadTimeout,
+			WriteTimeout: cfg.Server.WriteTimeout,
+			TLSConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+		}
+		go func() {
+			slog.Info("HTTPS server starting",
+				slog.String("listen", tlsListen),
+				slog.String("cert", cfg.Server.TLS.CertFile),
+			)
+			if err := tlsSrv.ListenAndServeTLS(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile); err != nil && err != http.ErrServerClosed {
+				slog.Error("TLS server error", slog.String("error", err.Error()))
+			}
+		}()
 	}
 
 	// Start admin API server if enabled
@@ -167,6 +237,12 @@ func main() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
+
+	if tlsSrv != nil {
+		if err := tlsSrv.Shutdown(ctx); err != nil {
+			slog.Error("TLS shutdown error", slog.String("error", err.Error()))
+		}
+	}
 
 	if adminSrv != nil {
 		if err := adminSrv.Shutdown(ctx); err != nil {
