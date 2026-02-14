@@ -89,9 +89,10 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if cbForUpstream != nil {
 				if resp.StatusCode >= 500 {
 					cbForUpstream.RecordFailure()
-				} else {
+				} else if resp.StatusCode < 400 {
 					cbForUpstream.RecordSuccess()
 				}
+				// 4xx responses are client errors; don't affect circuit breaker state
 			}
 			return nil
 		},
