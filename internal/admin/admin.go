@@ -91,6 +91,11 @@ func (s *Server) rollbackConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listRoutes(w http.ResponseWriter, r *http.Request) {
 	cfg := s.configLoader.Current()
 	w.Header().Set("Content-Type", "application/json")
+	if cfg == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "no configuration loaded"})
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cfg.Routes)
 }
@@ -98,6 +103,11 @@ func (s *Server) listRoutes(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listUpstreams(w http.ResponseWriter, r *http.Request) {
 	cfg := s.configLoader.Current()
 	w.Header().Set("Content-Type", "application/json")
+	if cfg == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "no configuration loaded"})
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cfg.Upstreams)
 }
