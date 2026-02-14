@@ -134,12 +134,29 @@ nexus/
 // Middleware 定义
 type Middleware func(http.Handler) http.Handler
 
-// Chain 将多个中间件串联
+// Chain 将多个中间件串联，每个中间件内置 panic recover 防止级联故障
 func Chain(handler http.Handler, middlewares ...Middleware) http.Handler {
     for i := len(middlewares) - 1; i >= 0; i-- {
-        handler = middlewares[i](handler)
+        next := middlewares[i](handler)
+        handler = recoverWrap(next)
     }
     return handler
+}
+
+// recoverWrap 为每个中间件包装 panic 恢复，避免单个中间件 panic 导致整条链路崩溃
+func recoverWrap(h http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        defer func() {
+            if err := recover(); err != nil {
+                slog.Error("middleware panic recovered",
+                    slog.Any("error", err),
+                    slog.String("path", r.URL.Path),
+                )
+                http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+            }
+        }()
+        h.ServeHTTP(w, r)
+    })
 }
 ```
 

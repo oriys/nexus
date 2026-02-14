@@ -206,6 +206,12 @@ spec:
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
             failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: {{ .Values.probes.liveness.port }}
+            failureThreshold: 30
+            periodSeconds: 2
           readinessProbe:
             httpGet:
               path: {{ .Values.probes.readiness.path }}
@@ -306,11 +312,12 @@ func (h *HealthHandler) Readyz(w http.ResponseWriter, r *http.Request) {
 ### 5.5.2 部署与回滚命令
 
 ```bash
-# 部署新版本
+# 部署新版本（--atomic：部署失败自动回滚到上一版本）
 helm upgrade nexus deployments/helm/nexus \
   --namespace nexus-system \
   --set image.tag=v1.2.0 \
   --wait \
+  --atomic \
   --timeout 5m
 
 # 查看发布历史

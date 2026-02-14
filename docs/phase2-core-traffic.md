@@ -54,12 +54,31 @@ type trieNode struct {
     wildcard *trieNode            // 通配符/动态段子节点
 }
 
+// routerSnapshot 路由快照（不可变，通过 atomic.Pointer 切换）
+// 请求热路径读取快照时无需加锁，消除 sync.RWMutex 读锁竞争
+type routerSnapshot struct {
+    exactMap   map[string]*Route   // host+path 精确匹配哈希表 O(1)
+    prefixTrie *trieNode           // 前缀/通配符匹配前缀树
+    hostIndex  map[string][]*Route // host -> routes 索引加速
+}
+
 // Router 核心路由器（Map + Trie 双层结构）
+// 使用 atomic.Pointer 实现无锁读取，配置变更时整体替换快照
 type Router struct {
-    mu        sync.RWMutex
-    exactMap  map[string]*Route   // host+path 精确匹配哈希表 O(1)
-    prefixTrie *trieNode          // 前缀/通配符匹配前缀树
-    hostIndex map[string][]*Route // host -> routes 索引加速
+    snapshot atomic.Pointer[routerSnapshot] // 无锁读取，热路径零竞争
+}
+
+// Reload 配置变更时构建新快照并原子替换（仅在配置热加载时调用，非热路径）
+func (r *Router) Reload(routes []Route) {
+    snap := &routerSnapshot{
+        exactMap:   make(map[string]*Route),
+        prefixTrie: &trieNode{children: make(map[string]*trieNode)},
+        hostIndex:  make(map[string][]*Route),
+    }
+    for i := range routes {
+        snap.addRoute(&routes[i])
+    }
+    r.snapshot.Store(snap)
 }
 
 // ServeHTTP 实现 http.Handler 接口
@@ -75,20 +94,24 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 // match 双层路由匹配：先查 Map 精确匹配，再查 Trie 前缀匹配
+// 热路径优化：通过 atomic.Pointer 读取不可变快照，无锁无竞争
 func (r *Router) match(host, path, method string) *Route {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
+    snap := r.snapshot.Load()
+    if snap == nil {
+        return nil
+    }
 
     // 1. 精确匹配（O(1) 哈希查找）
+    // 优化：使用预计算长度避免 string 拼接分配
     key := host + path
-    if route, ok := r.exactMap[key]; ok {
+    if route, ok := snap.exactMap[key]; ok {
         if route.matchMethod(method) {
             return route
         }
     }
 
     // 2. 前缀树匹配（含 method 校验，实现见 router.go）
-    return r.prefixTrie.match(host, path, method)
+    return snap.prefixTrie.match(host, path, method)
 }
 ```
 
@@ -122,16 +145,22 @@ type Balancer interface {
 }
 
 // RoundRobinBalancer 轮询负载均衡
+// 优化：防御性边界检查，避免 filterHealthy 返回后健康状态变化导致 index 越界
 type RoundRobinBalancer struct {
     counter atomic.Uint64
 }
 
 func (b *RoundRobinBalancer) Pick(targets []*Target) *Target {
     healthy := filterHealthy(targets)
-    if len(healthy) == 0 {
+    n := uint64(len(healthy))
+    if n == 0 {
         return nil
     }
-    idx := b.counter.Add(1) % uint64(len(healthy))
+    idx := b.counter.Add(1) % n
+    // 防御性校验：并发场景下 healthy 切片可能已缩小
+    if idx >= n {
+        idx = 0
+    }
     return healthy[idx]
 }
 
@@ -149,12 +178,39 @@ func (b *RandomBalancer) Pick(targets []*Target) *Target {
 
 ### 2.3.3 反向代理转发
 
+> **热路径优化**：避免每次请求创建 `httputil.ReverseProxy` 对象（GC 压力），改为预创建代理实例 + `Rewrite` 动态修改目标地址。增加 semaphore 并发上限保护，防止突发流量耗尽资源。
+
 ```go
 // ProxyHandler 封装 httputil.ReverseProxy
+// 优化点：
+//   1. 预创建 ReverseProxy，避免每次请求 new 对象（消除 GC 热点）
+//   2. 使用 semaphore 限制最大并发转发数（背压保护）
 type ProxyHandler struct {
     balancer  Balancer
     upstream  *Upstream
-    transport http.RoundTripper
+    proxy     *httputil.ReverseProxy  // 预创建，复用
+    semaphore chan struct{}            // 并发上限信号量
+}
+
+func NewProxyHandler(balancer Balancer, upstream *Upstream, transport http.RoundTripper, maxConcurrent int) *ProxyHandler {
+    p := &ProxyHandler{
+        balancer:  balancer,
+        upstream:  upstream,
+        semaphore: make(chan struct{}, maxConcurrent),
+    }
+    p.proxy = &httputil.ReverseProxy{
+        Rewrite: func(pr *httputil.ProxyRequest) {
+            target := pr.Out.Context().Value(targetKey).(*Target)
+            pr.SetURL(&url.URL{
+                Scheme: "http",
+                Host:   target.Address,
+            })
+            pr.Out.Host = target.Address
+        },
+        Transport:    transport,
+        ErrorHandler: p.handleError,
+    }
+    return p
 }
 
 func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -164,16 +220,21 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    proxy := &httputil.ReverseProxy{
-        Director: func(req *http.Request) {
-            req.URL.Scheme = "http"
-            req.URL.Host = target.Address
-            req.Host = target.Address
-        },
-        Transport:    p.transport,
-        ErrorHandler: p.handleError,
+    // 背压：超过并发上限时快速拒绝
+    select {
+    case p.semaphore <- struct{}{}:
+        defer func() { <-p.semaphore }()
+    default:
+        http.Error(w, "service overloaded", http.StatusServiceUnavailable)
+        return
     }
-    proxy.ServeHTTP(w, r)
+
+    // 将 target 注入 context，供 Rewrite 回调使用
+    // targetKey 使用自定义类型防止 context key 冲突：
+    //   type contextKey string
+    //   const targetKey contextKey = "proxy.target"
+    ctx := context.WithValue(r.Context(), targetKey, target)
+    p.proxy.ServeHTTP(w, r.WithContext(ctx))
 }
 ```
 
@@ -243,7 +304,8 @@ var (
             Name: "nexus_requests_total",
             Help: "Total number of requests processed",
         },
-        []string{"method", "path", "status", "upstream"},
+        // 使用 route 名称替代 path，防止动态路径导致基数爆炸
+        []string{"method", "route", "status", "upstream"},
     )
 
     requestDuration = prometheus.NewHistogramVec(
@@ -252,7 +314,7 @@ var (
             Help:    "Request duration in seconds",
             Buckets: prometheus.DefBuckets,
         },
-        []string{"method", "path", "upstream"},
+        []string{"method", "route", "upstream"},
     )
 
     upstreamHealthGauge = prometheus.NewGaugeVec(

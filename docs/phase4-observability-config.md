@@ -99,6 +99,7 @@ func NewMetricsRegistry() *MetricsRegistry {
                 Name:      "requests_total",
                 Help:      "Total number of HTTP requests",
             },
+            // 优化：使用 route 名称替代原始 path，防止动态路径参数（如 /users/123）导致基数爆炸
             []string{"method", "route", "status_code"},
         ),
         RequestDuration: prometheus.NewHistogramVec(
@@ -108,6 +109,7 @@ func NewMetricsRegistry() *MetricsRegistry {
                 Help:      "HTTP request duration in seconds",
                 Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
             },
+            // 优化：同上，使用 route 名称
             []string{"method", "route"},
         ),
         RateLimitHits: prometheus.NewCounterVec(
@@ -133,6 +135,23 @@ func NewMetricsRegistry() *MetricsRegistry {
                 Help:      "Total number of configuration reloads",
             },
             []string{"result"}, // success, failure
+        ),
+        // 新增：熔断器状态指标
+        CircuitBreakerState: prometheus.NewGaugeVec(
+            prometheus.GaugeOpts{
+                Namespace: "nexus",
+                Name:      "circuit_breaker_state",
+                Help:      "Circuit breaker state (0=closed, 1=open, 2=half_open)",
+            },
+            []string{"upstream"},
+        ),
+        // 新增：并发转发数指标（配合 ProxyHandler semaphore）
+        ActiveProxyRequests: prometheus.NewGauge(
+            prometheus.GaugeOpts{
+                Namespace: "nexus",
+                Name:      "active_proxy_requests",
+                Help:      "Number of in-flight proxy requests",
+            },
         ),
     }
 }
