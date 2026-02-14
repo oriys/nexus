@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -105,10 +106,7 @@ func (s *Server) publishRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add route and reload
-	newRoutes := make([]config.Route, len(cfg.Routes)+1)
-	copy(newRoutes, cfg.Routes)
-	newRoutes[len(cfg.Routes)] = route
-	cfg.Routes = newRoutes
+	cfg.Routes = append(cfg.Routes, route)
 	s.router.Reload(cfg.Routes)
 
 	writeJSON(w, http.StatusCreated, map[string]string{"message": "route published successfully", "name": route.Name})
@@ -265,5 +263,7 @@ func (s *Server) deleteDoc(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("failed to encode JSON response", slog.String("error", err.Error()))
+	}
 }
