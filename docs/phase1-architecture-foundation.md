@@ -14,7 +14,7 @@
 | 数据面代理 | 自研（基于 `net/http/httputil.ReverseProxy`） | MVP 阶段可控，后续可切换至 Envoy xDS 或嵌入式 NGINX |
 | 配置格式 | YAML + JSON Schema 校验 | 声明式、人类可读、生态工具链成熟 |
 | 配置热加载 | `fsnotify` + atomic swap | 文件变更监听 + 原子替换路由表，零重启更新 |
-| 日志 | `slog`（Go 1.21+ 标准库） | 结构化日志，零依赖 |
+| 日志 | `slog`（标准库，Go 1.21 引入） | 结构化日志，零依赖 |
 | 指标 | `prometheus/client_golang` | Prometheus 生态事实标准 |
 | 构建 | Go Modules + Makefile | 标准依赖管理 + 可重复构建 |
 | 容器 | 多阶段 Dockerfile（`scratch` / `distroless`） | 最小攻击面、快速启动 |
