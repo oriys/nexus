@@ -42,7 +42,11 @@ func main() {
 
 	// Initialize config version manager
 	versionMgr := config.NewVersionManager(10)
-	rawData, _ := os.ReadFile(configPath)
+	rawData, err := os.ReadFile(configPath)
+	if err != nil {
+		slog.Warn("failed to read raw config for versioning", slog.String("error", err.Error()))
+		rawData = nil
+	}
 	versionMgr.Save(cfg, rawData)
 
 	// Initialize components
@@ -126,7 +130,11 @@ func main() {
 		if err := loader.Watch(func(newCfg *config.Config) {
 			router.Reload(newCfg.Routes)
 			upstreamMgr.Reload(newCfg.Upstreams)
-			newRawData, _ := os.ReadFile(configPath)
+			newRawData, err := os.ReadFile(configPath)
+			if err != nil {
+				slog.Warn("failed to read raw config for versioning", slog.String("error", err.Error()))
+				newRawData = nil
+			}
 			versionMgr.Save(newCfg, newRawData)
 		}, done); err != nil {
 			slog.Error("config watcher error", slog.String("error", err.Error()))

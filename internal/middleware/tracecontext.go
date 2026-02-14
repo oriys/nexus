@@ -5,8 +5,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const traceIDKey contextKey = "trace_id"
@@ -41,7 +43,8 @@ func TraceContext() Middleware {
 func generateTraceID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		return strings.Repeat("0", 32)
+		slog.Error("failed to generate trace ID", slog.String("error", err.Error()))
+		return fmt.Sprintf("%016x%016x", uint64(time.Now().UnixNano()), uint64(0))
 	}
 	return hex.EncodeToString(b)
 }
@@ -50,7 +53,8 @@ func generateTraceID() string {
 func generateSpanID() string {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		return strings.Repeat("0", 16)
+		slog.Error("failed to generate span ID", slog.String("error", err.Error()))
+		return fmt.Sprintf("%016x", uint64(time.Now().UnixNano()))
 	}
 	return hex.EncodeToString(b)
 }
