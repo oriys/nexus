@@ -284,6 +284,7 @@ Show code
 开源/网关产品	Kong Inc.（Kong Gateway）	插件化、db-less/Hybrid/管理面、限流与mTLS插件、健康检查与熔断模型	db-less、Admin API、Hybrid、限流、mTLS、健康检查
 开源/网关产品	Apache APISIX	高性能动态网关、认证/观测/熔断/金丝雀等能力对标，etcd watch 配置同步思路	官方介绍与FAQ
 开源/入口代理	Traefik Labs（Traefik Proxy）	服务发现与路由起步，并可逐步叠加更“API管理”能力；便于轻量MVP对标	“What is Traefik”描述
+大规模实践参考	美团 Shepherd API Gateway	百亿级流量网关架构：三层分离（控制面/配置中心/数据面）、Map+Trie 多层路由、异步化处理、DSL 声明式 API 描述、组件化可插拔、全生命周期管理	[百亿规模API网关服务Shepherd的设计与实现](https://tech.meituan.com/2021/05/20/shepherd-api-gateway.html)
 可观测基座	OpenTelemetry	trace/metric/log 的关联与上下文传播概念，指导网关埋点与透传	Context propagation 与 logs 概念
 指标生态	Prometheus	指标暴露与采集格式（OpenMetrics/Prometheus exposition），指导MVP指标输出	OpenMetrics 规范描述
 商业云服务	Microsoft（Azure APIM）	JWT 校验、限流/配额、错误处理等“客户期望的网关策略”参照	Policy reference 与 rate-limit
@@ -294,7 +295,7 @@ Show code
 标准组织	IETF（OAuth2/JWT）	OAuth2 与 JWT 的标准定义，指导令牌语义与校验边界	RFC 6749 与 RFC 7519
 
 多阶段技术实施方案（Golang 架构）
-基于以上研究，已将 MVP 路线图拆分为 5 个可执行的技术阶段，采用 Go 语言技术栈实现，每阶段均有明确的可验收产物。详见以下文档：
+基于以上研究，已将 MVP 路线图拆分为 5 个可执行的技术阶段，采用 Go 1.24+ 语言技术栈实现（参考美团 Shepherd 三层架构模型），每阶段均有明确的可验收产物。详见以下文档：
 
 阶段	文档	时间窗口	核心交付物
 Phase 1	[架构定版与技术选型](docs/phase1-architecture-foundation.md)	第 1–2 周	Go 技术栈选型、项目脚手架、核心架构模型、基础路由 PoC

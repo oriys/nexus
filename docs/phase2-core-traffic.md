@@ -31,22 +31,35 @@ type PathRule struct {
 
 ### 2.2.2 路由匹配优先级
 
+> 参考 Shepherd 的多层路由机制，采用 **Map（哈希表精确匹配）+ Trie（前缀树模糊匹配）** 双层结构，实现毫秒级路径匹配。无变量的固定路径走 Map 直连路由（O(1)），带通配符/前缀的路径走 Trie 前缀路由。
+
 ```
-1. 精确 Host + 精确 Path（最高优先级）
-2. 精确 Host + 前缀 Path
-3. 通配符 Host + 精确 Path
-4. 通配符 Host + 前缀 Path
+1. Map 精确匹配：精确 Host + 精确 Path（最高优先级，O(1) 查找）
+2. Trie 前缀匹配：精确 Host + 前缀 Path
+3. Trie 通配符匹配：通配符 Host + 精确 Path
+4. Trie 通配符前缀：通配符 Host + 前缀 Path
 5. 默认路由（兜底 fallback）
 ```
 
 ### 2.2.3 Go 实现要点
 
+> 采用 Shepherd 风格的 Map + Trie 双层路由结构：固定路径走哈希表 O(1) 查找，前缀/通配符路径走前缀树匹配。
+
 ```go
-// Router 核心路由器
+// trieNode 前缀树节点
+// children 映射常规路径段（如 "api", "v1"），wildcard 处理动态/通配符段（如 ":id", "*"）
+type trieNode struct {
+    children map[string]*trieNode // 常规路径段子节点
+    route    *Route               // 叶子节点挂载路由
+    wildcard *trieNode            // 通配符/动态段子节点
+}
+
+// Router 核心路由器（Map + Trie 双层结构）
 type Router struct {
-    mu     sync.RWMutex
-    routes []Route
-    index  map[string][]*Route // host -> routes 索引加速
+    mu        sync.RWMutex
+    exactMap  map[string]*Route   // host+path 精确匹配哈希表 O(1)
+    prefixTrie *trieNode          // 前缀/通配符匹配前缀树
+    hostIndex map[string][]*Route // host -> routes 索引加速
 }
 
 // ServeHTTP 实现 http.Handler 接口
@@ -59,6 +72,23 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
     // 获取上游并转发
     upstream := r.resolveUpstream(route)
     upstream.ServeHTTP(w, req)
+}
+
+// match 双层路由匹配：先查 Map 精确匹配，再查 Trie 前缀匹配
+func (r *Router) match(host, path, method string) *Route {
+    r.mu.RLock()
+    defer r.mu.RUnlock()
+
+    // 1. 精确匹配（O(1) 哈希查找）
+    key := host + path
+    if route, ok := r.exactMap[key]; ok {
+        if route.matchMethod(method) {
+            return route
+        }
+    }
+
+    // 2. 前缀树匹配（含 method 校验，实现见 router.go）
+    return r.prefixTrie.match(host, path, method)
 }
 ```
 
