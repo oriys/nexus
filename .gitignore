@@ -1,6 +1,6 @@
 # Binaries
 bin/
-nexus
+/nexus
 *.exe
 *.exe~
 *.dll
