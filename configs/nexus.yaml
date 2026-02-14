@@ -21,3 +21,17 @@ routes:
 logging:
   level: info
   format: json
+
+rate_limit:
+  enabled: false
+  rate: 100
+  window: 1m
+
+auth:
+  api_key:
+    enabled: false
+    keys: {}
+
+admin:
+  enabled: false
+  listen: ":9090"

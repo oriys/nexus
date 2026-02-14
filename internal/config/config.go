@@ -8,6 +8,9 @@ type Config struct {
 	Upstreams []Upstream      `yaml:"upstreams"`
 	Routes    []Route         `yaml:"routes"`
 	Logging   LoggingConfig   `yaml:"logging"`
+	RateLimit RateLimitConfig `yaml:"rate_limit"`
+	Auth      AuthConfig      `yaml:"auth"`
+	Admin     AdminConfig     `yaml:"admin"`
 }
 
 // ServerConfig defines the HTTP server settings.
@@ -48,4 +51,28 @@ type PathRule struct {
 type LoggingConfig struct {
 	Level  string `yaml:"level"`
 	Format string `yaml:"format"`
+}
+
+// RateLimitConfig defines rate limiting settings.
+type RateLimitConfig struct {
+	Enabled bool          `yaml:"enabled"`
+	Rate    int           `yaml:"rate"`
+	Window  time.Duration `yaml:"window"`
+}
+
+// AuthConfig defines authentication settings.
+type AuthConfig struct {
+	APIKey APIKeyConfig `yaml:"api_key"`
+}
+
+// APIKeyConfig defines API key authentication settings.
+type APIKeyConfig struct {
+	Enabled bool              `yaml:"enabled"`
+	Keys    map[string]string `yaml:"keys"` // key → consumer name
+}
+
+// AdminConfig defines admin API settings.
+type AdminConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Listen  string `yaml:"listen"`
 }
