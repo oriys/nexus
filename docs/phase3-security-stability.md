@@ -272,7 +272,8 @@ func (l *ShardedSlidingWindowLimiter) Allow(key string) bool {
     return true
 }
 
-// fnv32a 快速哈希（内联友好，无堆分配）
+// fnv32a 实现 FNV-1a 32-bit 哈希算法
+// 用于将限流 key 高效映射到分片桶，特点：内联友好、零堆分配、分布均匀
 func fnv32a(s string) uint32 {
     const offset32 = 2166136261
     const prime32  = 16777619

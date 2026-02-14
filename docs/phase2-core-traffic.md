@@ -230,6 +230,9 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     }
 
     // 将 target 注入 context，供 Rewrite 回调使用
+    // targetKey 使用自定义类型防止 context key 冲突：
+    //   type contextKey string
+    //   const targetKey contextKey = "proxy.target"
     ctx := context.WithValue(r.Context(), targetKey, target)
     p.proxy.ServeHTTP(w, r.WithContext(ctx))
 }
