@@ -292,3 +292,13 @@ Show code
 边缘/IoT 参考	Amazon Web Services（IoT Greengrass）	弱网/离线下的认证持续可用模型，启发边缘网关“本地自治”需求边界	离线认证与边缘自治描述
 安全基线	OWASP API Security Top 10	作为网关安全策略优先级与风险沟通框架	项目与Top10介绍
 标准组织	IETF（OAuth2/JWT）	OAuth2 与 JWT 的标准定义，指导令牌语义与校验边界	RFC 6749 与 RFC 7519
+
+多阶段技术实施方案（Golang 架构）
+基于以上研究，已将 MVP 路线图拆分为 5 个可执行的技术阶段，采用 Go 语言技术栈实现，每阶段均有明确的可验收产物。详见以下文档：
+
+阶段	文档	时间窗口	核心交付物
+Phase 1	[架构定版与技术选型](docs/phase1-architecture-foundation.md)	第 1–2 周	Go 技术栈选型、项目脚手架、核心架构模型、基础路由 PoC
+Phase 2	[核心流量链路](docs/phase2-core-traffic.md)	第 2–3 周	路由引擎、负载均衡、访问日志、Prometheus 指标、配置热加载
+Phase 3	[安全与稳定性](docs/phase3-security-stability.md)	第 3–4 周	TLS 终止与证书热更新、JWT/API Key 鉴权、滑动窗口限流、超时/重试/熔断、主动与被动健康检查
+Phase 4	[可观测性与配置管理](docs/phase4-observability-config.md)	第 4–5 周	三大信号关联、Prometheus 指标体系、Trace Context 透传、配置校验与回滚、Admin API、Grafana 模板
+Phase 5	[部署交付与验收](docs/phase5-deployment-delivery.md)	第 5–6 周	多阶段 Dockerfile、Helm Chart、健康探针、发布与回滚流程、测试策略、压测报告模板、运维手册
