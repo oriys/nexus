@@ -12,7 +12,7 @@
 
 ```dockerfile
 # ---- Build Stage ----
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates
 
@@ -463,7 +463,7 @@ echo "=== All smoke tests passed ==="
 ## 环境
 - 硬件：4 vCPU / 8GB RAM
 - OS：Linux 6.x
-- Go 版本：1.22.x
+- Go 版本：1.24.x
 - 部署方式：Docker / Kubernetes (2 replicas)
 
 ## 测试工具
