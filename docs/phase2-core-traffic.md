@@ -47,10 +47,11 @@ type PathRule struct {
 
 ```go
 // trieNode 前缀树节点
+// children 映射常规路径段（如 "api", "v1"），wildcard 处理动态/通配符段（如 ":id", "*"）
 type trieNode struct {
-    children map[string]*trieNode
-    route    *Route // 叶子节点挂载路由
-    wildcard *trieNode // 通配符子节点
+    children map[string]*trieNode // 常规路径段子节点
+    route    *Route               // 叶子节点挂载路由
+    wildcard *trieNode            // 通配符/动态段子节点
 }
 
 // Router 核心路由器（Map + Trie 双层结构）
@@ -81,11 +82,13 @@ func (r *Router) match(host, path, method string) *Route {
     // 1. 精确匹配（O(1) 哈希查找）
     key := host + path
     if route, ok := r.exactMap[key]; ok {
-        return route
+        if route.matchMethod(method) {
+            return route
+        }
     }
 
-    // 2. 前缀树匹配
-    return r.prefixTrie.match(host, path)
+    // 2. 前缀树匹配（含 method 校验，实现见 router.go）
+    return r.prefixTrie.match(host, path, method)
 }
 ```
 
