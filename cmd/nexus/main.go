@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/oriys/nexus/internal/config"
 	"github.com/oriys/nexus/internal/health"
@@ -101,7 +102,7 @@ func main() {
 
 	shutdownTimeout := cfg.Server.ShutdownTimeout
 	if shutdownTimeout == 0 {
-		shutdownTimeout = 30 * 1e9 // 30 seconds default
+		shutdownTimeout = 30 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
