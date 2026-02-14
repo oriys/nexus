@@ -25,18 +25,17 @@ type TLSConfig struct {
 
 利用 `tls.Config.GetCertificate` 回调实现证书动态加载，无需重启：
 
+> **热路径优化**：TLS 握手在每个新连接上触发 `GetCertificate`，使用 `atomic.Pointer` 替代 `sync.RWMutex`，消除读锁竞争。
+
 ```go
 type CertManager struct {
-    mu       sync.RWMutex
-    cert     *tls.Certificate
+    cert     atomic.Pointer[tls.Certificate] // 无锁读取，TLS 握手热路径零竞争
     certFile string
     keyFile  string
 }
 
 func (cm *CertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-    cm.mu.RLock()
-    defer cm.mu.RUnlock()
-    return cm.cert, nil
+    return cm.cert.Load(), nil // 无锁读取
 }
 
 func (cm *CertManager) Reload() error {
@@ -44,9 +43,7 @@ func (cm *CertManager) Reload() error {
     if err != nil {
         return fmt.Errorf("failed to load certificate: %w", err)
     }
-    cm.mu.Lock()
-    cm.cert = &cert
-    cm.mu.Unlock()
+    cm.cert.Store(&cert) // 原子写入
     return nil
 }
 
@@ -204,13 +201,22 @@ type RateLimitConfig struct {
 
 ### 3.4.2 本地滑动窗口限流器
 
+> **热路径优化**：原始设计使用单个 `sync.Mutex` 保护所有 key 的限流窗口，在高并发场景下成为单点瓶颈。改用分片锁（sharded lock）设计：按 key 哈希分配到 N 个桶，每桶独立加锁，将锁竞争降低为 1/N。
+
 ```go
-// SlidingWindowLimiter 滑动窗口限流器
-type SlidingWindowLimiter struct {
+const numShards = 256 // 分片数，2 的幂次便于位运算
+
+// ShardedSlidingWindowLimiter 分片滑动窗口限流器
+// 按 key 哈希分配到独立分片，消除全局锁竞争瓶颈
+type ShardedSlidingWindowLimiter struct {
+    shards [numShards]shard
+    rate   int
+    window time.Duration
+}
+
+type shard struct {
     mu      sync.Mutex
     windows map[string]*window
-    rate    int
-    window  time.Duration
 }
 
 type window struct {
@@ -219,15 +225,30 @@ type window struct {
     currStart time.Time
 }
 
-func (l *SlidingWindowLimiter) Allow(key string) bool {
-    l.mu.Lock()
-    defer l.mu.Unlock()
+func NewShardedSlidingWindowLimiter(rate int, window time.Duration) *ShardedSlidingWindowLimiter {
+    l := &ShardedSlidingWindowLimiter{rate: rate, window: window}
+    for i := range l.shards {
+        l.shards[i].windows = make(map[string]*window)
+    }
+    return l
+}
+
+// getShard 根据 key 哈希选择分片（FNV-1a，位运算取模）
+func (l *ShardedSlidingWindowLimiter) getShard(key string) *shard {
+    h := fnv32a(key)
+    return &l.shards[h&(numShards-1)]
+}
+
+func (l *ShardedSlidingWindowLimiter) Allow(key string) bool {
+    s := l.getShard(key)
+    s.mu.Lock()
+    defer s.mu.Unlock()
 
     now := time.Now()
-    w, ok := l.windows[key]
+    w, ok := s.windows[key]
     if !ok {
         w = &window{currStart: now}
-        l.windows[key] = w
+        s.windows[key] = w
     }
 
     // 窗口滑动
@@ -250,12 +271,24 @@ func (l *SlidingWindowLimiter) Allow(key string) bool {
     w.count++
     return true
 }
+
+// fnv32a 快速哈希（内联友好，无堆分配）
+func fnv32a(s string) uint32 {
+    const offset32 = 2166136261
+    const prime32  = 16777619
+    h := uint32(offset32)
+    for i := 0; i < len(s); i++ {
+        h ^= uint32(s[i])
+        h *= prime32
+    }
+    return h
+}
 ```
 
 ### 3.4.3 限流中间件
 
 ```go
-func RateLimitMiddleware(limiter *SlidingWindowLimiter, keyFunc KeyExtractor) Middleware {
+func RateLimitMiddleware(limiter *ShardedSlidingWindowLimiter, keyFunc KeyExtractor) Middleware {
     return func(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
             key := keyFunc(r)
@@ -305,6 +338,7 @@ type TimeoutConfig struct {
 }
 
 // 应用到 http.Transport
+// 优化：增加 MaxConnsPerHost 防止单一上游耗尽连接资源
 func newTransport(cfg TimeoutConfig) *http.Transport {
     return &http.Transport{
         DialContext: (&net.Dialer{
@@ -313,6 +347,7 @@ func newTransport(cfg TimeoutConfig) *http.Transport {
         ResponseHeaderTimeout: cfg.Read,
         IdleConnTimeout:       cfg.Idle,
         MaxIdleConnsPerHost:   100,
+        MaxConnsPerHost:       200,  // 单上游最大连接数上限，防止连接耗尽
     }
 }
 ```
@@ -364,6 +399,7 @@ const (
 )
 
 // CircuitBreaker 熔断器
+// 优化：增加状态变化回调，发出可观测指标
 type CircuitBreaker struct {
     mu               sync.Mutex
     state            CircuitState
@@ -373,6 +409,8 @@ type CircuitBreaker struct {
     successThreshold int           // 半开态恢复的成功次数
     timeout          time.Duration // 熔断持续时间
     lastFailure      time.Time
+    name             string        // 上游名称，用于指标标签
+    onStateChange    func(name string, from, to CircuitState) // 状态变化回调
 }
 
 func (cb *CircuitBreaker) Allow() bool {
@@ -384,7 +422,7 @@ func (cb *CircuitBreaker) Allow() bool {
         return true
     case StateOpen:
         if time.Since(cb.lastFailure) > cb.timeout {
-            cb.state = StateHalfOpen
+            cb.transition(StateHalfOpen)
             cb.successCount = 0
             return true
         }
@@ -402,7 +440,7 @@ func (cb *CircuitBreaker) RecordSuccess() {
     if cb.state == StateHalfOpen {
         cb.successCount++
         if cb.successCount >= cb.successThreshold {
-            cb.state = StateClosed
+            cb.transition(StateClosed)
             cb.failureCount = 0
         }
     }
@@ -417,7 +455,16 @@ func (cb *CircuitBreaker) RecordFailure() {
     cb.lastFailure = time.Now()
 
     if cb.failureCount >= cb.failureThreshold {
-        cb.state = StateOpen
+        cb.transition(StateOpen)
+    }
+}
+
+// transition 状态转换 + 回调通知（用于发出 Prometheus 指标）
+func (cb *CircuitBreaker) transition(to CircuitState) {
+    from := cb.state
+    cb.state = to
+    if cb.onStateChange != nil {
+        cb.onStateChange(cb.name, from, to)
     }
 }
 ```
