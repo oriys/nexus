@@ -14,6 +14,7 @@ type Server struct {
 	versionManager *config.VersionManager
 	router         *proxy.Router
 	upstreamMgr    *proxy.UpstreamManager
+	docStore       *DocStore
 	mux            *http.ServeMux
 }
 
@@ -24,13 +25,30 @@ func New(cl *config.Loader, vm *config.VersionManager, r *proxy.Router, um *prox
 		versionManager: vm,
 		router:         r,
 		upstreamMgr:    um,
+		docStore:       NewDocStore(),
 		mux:            http.NewServeMux(),
 	}
+	// Config management (Control Plane)
 	s.mux.HandleFunc("GET /api/v1/config", s.getConfig)
 	s.mux.HandleFunc("GET /api/v1/config/versions", s.listVersions)
 	s.mux.HandleFunc("POST /api/v1/config/rollback", s.rollbackConfig)
+
+	// Route publishing (Control Plane)
 	s.mux.HandleFunc("GET /api/v1/routes", s.listRoutes)
+	s.mux.HandleFunc("POST /api/v1/routes", s.publishRoute)
+	s.mux.HandleFunc("PUT /api/v1/routes/{name}", s.updateRoute)
+	s.mux.HandleFunc("DELETE /api/v1/routes/{name}", s.deleteRoute)
+
+	// Upstream management (Control Plane)
 	s.mux.HandleFunc("GET /api/v1/upstreams", s.listUpstreams)
+
+	// Documentation publishing (Control Plane)
+	s.mux.HandleFunc("GET /api/v1/docs", s.listDocs)
+	s.mux.HandleFunc("POST /api/v1/docs", s.publishDoc)
+	s.mux.HandleFunc("GET /api/v1/docs/{route}", s.getDoc)
+	s.mux.HandleFunc("DELETE /api/v1/docs/{route}", s.deleteDoc)
+
+	// Status (Control Plane)
 	s.mux.HandleFunc("GET /api/v1/status", s.getStatus)
 	return s
 }
