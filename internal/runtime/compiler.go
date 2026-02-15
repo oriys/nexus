@@ -112,9 +112,13 @@ func Compile(cfg *config.Config, version uint64) (*CompiledConfig, error) {
 		}
 	}
 
-	// Sort prefix routes by length descending (longest match first)
+	// Sort prefix routes by length descending (longest match first).
+	// Use lexicographic ordering as tiebreaker for deterministic matching.
 	sort.Slice(prefixRoutes, func(i, j int) bool {
-		return len(prefixRoutes[i].prefix) > len(prefixRoutes[j].prefix)
+		if len(prefixRoutes[i].prefix) != len(prefixRoutes[j].prefix) {
+			return len(prefixRoutes[i].prefix) > len(prefixRoutes[j].prefix)
+		}
+		return prefixRoutes[i].prefix < prefixRoutes[j].prefix
 	})
 
 	router := &RouterIndex{

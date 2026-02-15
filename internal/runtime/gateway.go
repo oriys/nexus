@@ -64,6 +64,6 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			slog.String("cluster", cluster.Name),
 			slog.String("error", err.Error()),
 		)
-		// Error is already handled by the upstream handler via ErrorHandler
+		// The HTTP error response is written by the upstream's ErrorHandler
 	}
 }

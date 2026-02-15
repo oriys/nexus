@@ -58,7 +58,7 @@ func (u *HTTPUpstream) Handle(w http.ResponseWriter, r *http.Request, route *Com
 	}
 
 	if route.TimeoutMs > 0 {
-		proxy.FlushInterval = time.Duration(route.TimeoutMs) * time.Millisecond
+		proxy.FlushInterval = 100 * time.Millisecond
 	}
 
 	proxy.ServeHTTP(w, r)
@@ -99,7 +99,9 @@ func (u *GRPCUpstream) Handle(w http.ResponseWriter, r *http.Request, route *Com
 	// Set gRPC content-type
 	r.Header.Set("Content-Type", "application/grpc+json")
 
-	// gRPC requires HTTP/2
+	// Note: HTTP/2 is negotiated by the transport layer; setting ProtoMajor is
+	// informational for gRPC framing. The reverse proxy transport handles the
+	// actual protocol negotiation with the backend.
 	r.ProtoMajor = 2
 	r.ProtoMinor = 0
 
@@ -190,6 +192,9 @@ func (u *DubboUpstream) Handle(w http.ResponseWriter, r *http.Request, route *Co
 		}
 		if len(bodyBytes) > 0 {
 			if err := json.Unmarshal(bodyBytes, &args); err != nil {
+				slog.Warn("dubbo request body is not valid JSON, passing as raw string",
+					slog.String("error", err.Error()),
+				)
 				args = string(bodyBytes)
 			}
 		}
