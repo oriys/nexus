@@ -43,6 +43,12 @@ clusters:
       version: "1.0.0"
       serialization: "hessian2"
 
+  - name: graphql-svc
+    type: graphql
+    endpoints:
+      - url: "http://graphql-svc:8080"
+    lb: round_robin
+
 # V2 DSL: Routes with match/filters/upstream
 routes_v2:
   - name: http_passthrough
@@ -98,6 +104,16 @@ routes_v2:
           mode: "json_to_hessian"
         response:
           mode: "hessian_to_json"
+
+  - name: graphql_proxy
+    match:
+      methods: ["POST", "GET"]
+      path_prefix: "/graphql"
+    upstream:
+      cluster: graphql-svc
+      timeout_ms: 30000
+      graphql:
+        endpoint: "/graphql"
 
 logging:
   level: info

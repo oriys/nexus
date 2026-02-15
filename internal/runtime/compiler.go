@@ -23,6 +23,7 @@ func Compile(cfg *config.Config, version uint64) (*CompiledConfig, error) {
 			Keepalive: c.Keepalive,
 			GRPC:      c.GRPC,
 			Dubbo:     c.Dubbo,
+			GraphQL:   c.GraphQL,
 		}
 		if cc.LB == "" {
 			cc.LB = "round_robin"
@@ -77,6 +78,7 @@ func Compile(cfg *config.Config, version uint64) (*CompiledConfig, error) {
 				ClusterName: rv2.Upstream.Cluster,
 				GRPC:        rv2.Upstream.GRPC,
 				Dubbo:       rv2.Upstream.Dubbo,
+				GraphQL:     rv2.Upstream.GraphQL,
 			},
 			TimeoutMs: rv2.Upstream.TimeoutMs,
 		}
