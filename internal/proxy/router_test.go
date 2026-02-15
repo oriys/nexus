@@ -20,12 +20,12 @@ func TestRouterExactMatch(t *testing.T) {
 	})
 
 	req := httptest.NewRequest("GET", "http://example.com/api/v1", nil)
-	upstream, ok := router.Match(req)
+	result, ok := router.Match(req)
 	if !ok {
 		t.Fatal("expected match")
 	}
-	if upstream != "backend-a" {
-		t.Errorf("expected backend-a, got %s", upstream)
+	if result.Upstream != "backend-a" {
+		t.Errorf("expected backend-a, got %s", result.Upstream)
 	}
 }
 
@@ -41,12 +41,12 @@ func TestRouterPrefixMatch(t *testing.T) {
 	})
 
 	req := httptest.NewRequest("GET", "http://localhost/api/v1/users", nil)
-	upstream, ok := router.Match(req)
+	result, ok := router.Match(req)
 	if !ok {
 		t.Fatal("expected match")
 	}
-	if upstream != "backend-b" {
-		t.Errorf("expected backend-b, got %s", upstream)
+	if result.Upstream != "backend-b" {
+		t.Errorf("expected backend-b, got %s", result.Upstream)
 	}
 }
 
@@ -86,12 +86,12 @@ func TestRouterLongestPrefixWins(t *testing.T) {
 	})
 
 	req := httptest.NewRequest("GET", "http://localhost/api/v2/users", nil)
-	upstream, ok := router.Match(req)
+	result, ok := router.Match(req)
 	if !ok {
 		t.Fatal("expected match")
 	}
-	if upstream != "long-backend" {
-		t.Errorf("expected long-backend, got %s", upstream)
+	if result.Upstream != "long-backend" {
+		t.Errorf("expected long-backend, got %s", result.Upstream)
 	}
 }
 
@@ -107,12 +107,12 @@ func TestRouterWildcardHost(t *testing.T) {
 	})
 
 	req := httptest.NewRequest("GET", "http://anything.com/whatever", nil)
-	upstream, ok := router.Match(req)
+	result, ok := router.Match(req)
 	if !ok {
 		t.Fatal("expected match with empty host (wildcard)")
 	}
-	if upstream != "default" {
-		t.Errorf("expected default, got %s", upstream)
+	if result.Upstream != "default" {
+		t.Errorf("expected default, got %s", result.Upstream)
 	}
 }
 
@@ -134,12 +134,12 @@ func TestRouterExactMatchOverPrefix(t *testing.T) {
 	})
 
 	req := httptest.NewRequest("GET", "http://example.com/api/v1", nil)
-	upstream, ok := router.Match(req)
+	result, ok := router.Match(req)
 	if !ok {
 		t.Fatal("expected match")
 	}
-	if upstream != "exact-backend" {
-		t.Errorf("expected exact-backend (exact over prefix), got %s", upstream)
+	if result.Upstream != "exact-backend" {
+		t.Errorf("expected exact-backend (exact over prefix), got %s", result.Upstream)
 	}
 }
 
@@ -155,9 +155,9 @@ func TestRouterReload(t *testing.T) {
 	})
 
 	req := httptest.NewRequest("GET", "http://localhost/test", nil)
-	upstream, _ := router.Match(req)
-	if upstream != "old-backend" {
-		t.Fatalf("expected old-backend, got %s", upstream)
+	result, _ := router.Match(req)
+	if result.Upstream != "old-backend" {
+		t.Fatalf("expected old-backend, got %s", result.Upstream)
 	}
 
 	// Reload with new routes
@@ -170,9 +170,9 @@ func TestRouterReload(t *testing.T) {
 		},
 	})
 
-	upstream, _ = router.Match(req)
-	if upstream != "new-backend" {
-		t.Errorf("expected new-backend after reload, got %s", upstream)
+	result, _ = router.Match(req)
+	if result.Upstream != "new-backend" {
+		t.Errorf("expected new-backend after reload, got %s", result.Upstream)
 	}
 }
 
@@ -190,11 +190,11 @@ func TestRouterHostWithPort(t *testing.T) {
 	// Request with port in host
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Host = "example.com:8080"
-	upstream, ok := router.Match(req)
+	result, ok := router.Match(req)
 	if !ok {
 		t.Fatal("expected match with host:port")
 	}
-	if upstream != "backend" {
-		t.Errorf("expected backend, got %s", upstream)
+	if result.Upstream != "backend" {
+		t.Errorf("expected backend, got %s", result.Upstream)
 	}
 }

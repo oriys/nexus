@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
+
+	"github.com/oriys/nexus/internal/config"
 )
 
 // Proxy is the main reverse proxy handler that routes requests to upstreams.
@@ -23,12 +26,13 @@ func NewProxy(router *Router, upstream *UpstreamManager) *Proxy {
 
 // ServeHTTP implements the http.Handler interface.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	upstreamName, matched := p.router.Match(r)
+	result, matched := p.router.Match(r)
 	if !matched {
 		http.Error(w, "no matching route", http.StatusNotFound)
 		return
 	}
 
+	upstreamName := result.Upstream
 	targetAddr, ok := p.upstream.GetTarget(upstreamName)
 	if !ok {
 		slog.Error("upstream not found", slog.String("upstream", upstreamName))
@@ -43,6 +47,19 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 		)
 		http.Error(w, "bad gateway", http.StatusBadGateway)
+		return
+	}
+
+	// Determine the matched path prefix for path rewriting
+	matchedPath := findMatchedPath(result.Route, r.URL.Path)
+
+	// Apply request rewriting before proxying
+	if err := ApplyRewrite(r, result.Route, matchedPath); err != nil {
+		slog.Error("request rewrite failed",
+			slog.String("route", result.Route.Name),
+			slog.String("error", err.Error()),
+		)
+		http.Error(w, "request rewrite failed", http.StatusBadRequest)
 		return
 	}
 
@@ -62,4 +79,21 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	proxy.ServeHTTP(w, r)
+}
+
+// findMatchedPath finds the path prefix that matched the route for path rewriting.
+func findMatchedPath(route config.Route, requestPath string) string {
+	for _, p := range route.Paths {
+		switch p.Type {
+		case "exact":
+			if requestPath == p.Path {
+				return p.Path
+			}
+		case "prefix":
+			if strings.HasPrefix(requestPath, p.Path) {
+				return p.Path
+			}
+		}
+	}
+	return ""
 }
