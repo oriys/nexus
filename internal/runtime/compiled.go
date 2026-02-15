@@ -21,12 +21,13 @@ type CompiledConfig struct {
 // CompiledCluster holds a pre-compiled cluster with resolved endpoints.
 type CompiledCluster struct {
 	Name      string
-	Type      string // "http", "grpc", "dubbo"
+	Type      string // "http", "grpc", "dubbo", "graphql"
 	Endpoints []config.ClusterEndpoint
 	LB        string
 	Keepalive *config.KeepaliveConfig
 	GRPC      *config.ClusterGRPC
 	Dubbo     *config.ClusterDubbo
+	GraphQL   *config.ClusterGraphQL
 	counter   atomic.Uint64
 }
 
@@ -64,6 +65,7 @@ type RouteUpstreamConfig struct {
 	ClusterName string
 	GRPC        *config.RouteUpstreamGRPC
 	Dubbo       *config.RouteUpstreamDubbo
+	GraphQL     *config.RouteUpstreamGraphQL
 }
 
 // CompiledMatch holds pre-compiled match criteria for fast evaluation.
