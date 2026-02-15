@@ -53,15 +53,18 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Determine the matched path prefix for path rewriting
 	matchedPath := findMatchedPath(result.Route, r.URL.Path)
 
+	// Apply request rewriting before proxying
+	if err := ApplyRewrite(r, result.Route, matchedPath); err != nil {
+		slog.Error("request rewrite failed",
+			slog.String("route", result.Route.Name),
+			slog.String("error", err.Error()),
+		)
+		http.Error(w, "request rewrite failed", http.StatusBadRequest)
+		return
+	}
+
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
-			// Apply request rewriting before proxying
-			if err := ApplyRewrite(pr.Out, result.Route, matchedPath); err != nil {
-				slog.Error("request rewrite failed",
-					slog.String("route", result.Route.Name),
-					slog.String("error", err.Error()),
-				)
-			}
 			pr.SetURL(target)
 			pr.Out.Host = r.Host
 		},

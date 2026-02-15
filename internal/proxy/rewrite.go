@@ -24,9 +24,6 @@ func applyHTTPRewrite(r *http.Request, rw *config.RewriteRule, matchedPath strin
 		originalPath := r.URL.Path
 		if matchedPath != "" && strings.HasPrefix(originalPath, matchedPath) {
 			r.URL.Path = rw.PathRewrite.Prefix + strings.TrimPrefix(originalPath, matchedPath)
-			if r.URL.Path == "" {
-				r.URL.Path = "/"
-			}
 			r.URL.RawPath = ""
 		}
 	}
