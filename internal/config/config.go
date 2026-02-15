@@ -11,6 +11,10 @@ type Config struct {
 	RateLimit RateLimitConfig `yaml:"rate_limit"`
 	Auth      AuthConfig      `yaml:"auth"`
 	Admin     AdminConfig     `yaml:"admin"`
+	Version   string          `yaml:"version,omitempty"`
+	Listeners []Listener      `yaml:"listeners,omitempty"`
+	Clusters  []Cluster       `yaml:"clusters,omitempty"`
+	RoutesV2  []RouteV2       `yaml:"routes_v2,omitempty"`
 }
 
 // ServerConfig defines the HTTP server settings.
@@ -133,4 +137,109 @@ type APIKeyConfig struct {
 type AdminConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Listen  string `yaml:"listen"`
+}
+
+// Listener defines a network listener.
+type Listener struct {
+	Name string `yaml:"name"`
+	Addr string `yaml:"addr"`
+	H2C  bool   `yaml:"h2c"`
+}
+
+// Cluster defines an upstream cluster with protocol-specific settings.
+type Cluster struct {
+	Name      string            `yaml:"name"`
+	Type      string            `yaml:"type"` // "http", "grpc", "dubbo"
+	Endpoints []ClusterEndpoint `yaml:"endpoints"`
+	LB        string            `yaml:"lb"` // "round_robin", "pick_first"
+	Keepalive *KeepaliveConfig  `yaml:"keepalive,omitempty"`
+	GRPC      *ClusterGRPC      `yaml:"grpc,omitempty"`
+	Dubbo     *ClusterDubbo     `yaml:"dubbo,omitempty"`
+}
+
+// ClusterEndpoint defines a single endpoint in a cluster.
+type ClusterEndpoint struct {
+	URL    string `yaml:"url,omitempty"`
+	Target string `yaml:"target,omitempty"`
+	Addr   string `yaml:"addr,omitempty"`
+}
+
+// KeepaliveConfig defines connection keepalive settings.
+type KeepaliveConfig struct {
+	MaxIdleConns      int `yaml:"max_idle_conns"`
+	IdleConnTimeoutMs int `yaml:"idle_conn_timeout_ms"`
+}
+
+// ClusterGRPC defines gRPC-specific cluster settings.
+type ClusterGRPC struct {
+	Authority    string `yaml:"authority"`
+	MaxRecvMsgMB int    `yaml:"max_recv_msg_mb"`
+}
+
+// ClusterDubbo defines Dubbo-specific cluster settings.
+type ClusterDubbo struct {
+	Application   string `yaml:"application"`
+	Group         string `yaml:"group"`
+	Version       string `yaml:"version"`
+	Serialization string `yaml:"serialization"`
+}
+
+// RouteV2 defines a route in the new DSL format.
+type RouteV2 struct {
+	Name     string        `yaml:"name"`
+	Match    RouteMatch    `yaml:"match"`
+	Filters  []RouteFilter `yaml:"filters,omitempty"`
+	Upstream RouteUpstream `yaml:"upstream"`
+}
+
+// RouteMatch defines request matching criteria.
+type RouteMatch struct {
+	Methods    []string      `yaml:"methods,omitempty"`
+	Path       string        `yaml:"path,omitempty"`
+	PathPrefix string        `yaml:"path_prefix,omitempty"`
+	Headers    []HeaderMatch `yaml:"headers,omitempty"`
+}
+
+// HeaderMatch defines a header matching rule.
+type HeaderMatch struct {
+	Name     string `yaml:"name"`
+	Exact    string `yaml:"exact,omitempty"`
+	Contains string `yaml:"contains,omitempty"`
+}
+
+// RouteFilter defines a filter in the route pipeline.
+type RouteFilter struct {
+	Type string            `yaml:"type"` // "strip_prefix", "header_set"
+	Args map[string]string `yaml:"args,omitempty"`
+}
+
+// RouteUpstream defines the upstream destination for a route.
+type RouteUpstream struct {
+	Cluster   string              `yaml:"cluster"`
+	TimeoutMs int                 `yaml:"timeout_ms,omitempty"`
+	GRPC      *RouteUpstreamGRPC  `yaml:"grpc,omitempty"`
+	Dubbo     *RouteUpstreamDubbo `yaml:"dubbo,omitempty"`
+}
+
+// RouteUpstreamGRPC defines gRPC-specific upstream settings for a route.
+type RouteUpstreamGRPC struct {
+	Service  string         `yaml:"service"`
+	Method   string         `yaml:"method"`
+	Request  *TranscodeMode `yaml:"request,omitempty"`
+	Response *TranscodeMode `yaml:"response,omitempty"`
+}
+
+// RouteUpstreamDubbo defines Dubbo-specific upstream settings for a route.
+type RouteUpstreamDubbo struct {
+	Interface  string         `yaml:"interface"`
+	Method     string         `yaml:"method"`
+	ParamTypes []string       `yaml:"param_types,omitempty"`
+	Request    *TranscodeMode `yaml:"request,omitempty"`
+	Response   *TranscodeMode `yaml:"response,omitempty"`
+}
+
+// TranscodeMode defines transcoding settings.
+type TranscodeMode struct {
+	Mode  string `yaml:"mode"` // "json_to_proto", "proto_to_json", "json_to_hessian", "hessian_to_json", "passthrough"
+	Proto string `yaml:"proto,omitempty"`
 }
