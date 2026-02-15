@@ -173,6 +173,34 @@ func TestGraphQLUpstream_NoEndpoints(t *testing.T) {
 	}
 }
 
+func TestGraphQLUpstream_UnsupportedMethod(t *testing.T) {
+	upstream := &GraphQLUpstream{}
+	route := &CompiledRoute{
+		Name: "graphql-method",
+		Upstream: RouteUpstreamConfig{
+			ClusterName: "graphql-svc",
+		},
+	}
+	cluster := &CompiledCluster{
+		Name: "graphql-svc",
+		Type: "graphql",
+		Endpoints: []config.ClusterEndpoint{
+			{URL: "http://localhost:8080"},
+		},
+	}
+
+	req := httptest.NewRequest("PUT", "/graphql", nil)
+	w := httptest.NewRecorder()
+
+	err := upstream.Handle(w, req, route, cluster)
+	if err == nil {
+		t.Fatal("expected error for unsupported method")
+	}
+	if !strings.Contains(err.Error(), "unsupported HTTP method") {
+		t.Errorf("expected 'unsupported HTTP method' error, got %s", err.Error())
+	}
+}
+
 func TestUpstreamDispatcher_GraphQL(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

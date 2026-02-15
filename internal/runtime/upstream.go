@@ -284,9 +284,9 @@ func (u *GraphQLUpstream) Handle(w http.ResponseWriter, r *http.Request, route *
 	r.URL.Path = gqlPath
 	r.URL.RawPath = ""
 
-	// Ensure the method is POST (standard for GraphQL mutations/queries via HTTP)
+	// GraphQL over HTTP only supports GET and POST methods
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
-		r.Method = http.MethodPost
+		return fmt.Errorf("unsupported HTTP method %s for GraphQL upstream (only GET and POST are allowed)", r.Method)
 	}
 
 	// Ensure Content-Type is set for GraphQL
