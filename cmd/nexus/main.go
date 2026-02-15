@@ -16,6 +16,7 @@ import (
 	"github.com/oriys/nexus/internal/middleware"
 	"github.com/oriys/nexus/internal/proxy"
 	"github.com/oriys/nexus/internal/ratelimit"
+	"github.com/oriys/nexus/internal/runtime"
 )
 
 func main() {
@@ -57,6 +58,21 @@ func main() {
 	router.Reload(cfg.Routes)
 	upstreamMgr.Reload(cfg.Upstreams)
 
+	// Initialize runtime config store for V2 DSL
+	configStore := runtime.NewConfigStore()
+	var useV2 bool
+	if len(cfg.RoutesV2) > 0 && len(cfg.Clusters) > 0 {
+		if _, err := runtime.CompileAndStore(cfg, configStore); err != nil {
+			slog.Error("failed to compile v2 config", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		useV2 = true
+		slog.Info("v2 DSL configuration compiled",
+			slog.Int("clusters", len(cfg.Clusters)),
+			slog.Int("routes", len(cfg.RoutesV2)),
+		)
+	}
+
 	// Health checker
 	checker := health.NewChecker()
 
@@ -91,8 +107,13 @@ func main() {
 	}
 
 	// Build handler with middleware chain
-	proxyHandler := proxy.NewProxy(router, upstreamMgr)
-	handler := middleware.Chain(proxyHandler, middlewares...)
+	var baseHandler http.Handler
+	if useV2 {
+		baseHandler = runtime.NewGateway(configStore)
+	} else {
+		baseHandler = proxy.NewProxy(router, upstreamMgr)
+	}
+	handler := middleware.Chain(baseHandler, middlewares...)
 
 	// Create mux with health endpoints
 	mux := http.NewServeMux()
@@ -130,6 +151,16 @@ func main() {
 		if err := loader.Watch(func(newCfg *config.Config) {
 			router.Reload(newCfg.Routes)
 			upstreamMgr.Reload(newCfg.Upstreams)
+
+			// Recompile V2 config if present
+			if len(newCfg.RoutesV2) > 0 && len(newCfg.Clusters) > 0 {
+				if _, err := runtime.CompileAndStore(newCfg, configStore); err != nil {
+					slog.Error("failed to recompile v2 config", slog.String("error", err.Error()))
+				} else {
+					slog.Info("v2 DSL configuration recompiled")
+				}
+			}
+
 			newRawData, err := os.ReadFile(configPath)
 			if err != nil {
 				slog.Warn("failed to read raw config for versioning", slog.String("error", err.Error()))

@@ -1,0 +1,118 @@
+version: v1
+
+# Legacy server config (used when listeners are not defined)
+server:
+  listen: ":8080"
+  read_timeout: 30s
+  write_timeout: 30s
+  shutdown_timeout: 30s
+
+# V2 DSL: Listeners
+listeners:
+  - name: public
+    addr: ":8080"
+    h2c: true
+
+# V2 DSL: Clusters (upstream groups with protocol-specific settings)
+clusters:
+  - name: user-http
+    type: http
+    endpoints:
+      - url: "http://user-svc:8080"
+    lb: round_robin
+    keepalive:
+      max_idle_conns: 1024
+      idle_conn_timeout_ms: 60000
+
+  - name: user-grpc
+    type: grpc
+    endpoints:
+      - target: "dns:///user-grpc:9090"
+    lb: pick_first
+    grpc:
+      authority: "user-grpc"
+      max_recv_msg_mb: 16
+
+  - name: order-dubbo
+    type: dubbo
+    endpoints:
+      - addr: "order-dubbo:20880"
+    dubbo:
+      application: "nova-gw"
+      group: ""
+      version: "1.0.0"
+      serialization: "hessian2"
+
+# V2 DSL: Routes with match/filters/upstream
+routes_v2:
+  - name: http_passthrough
+    match:
+      methods: ["GET", "POST", "PUT", "DELETE"]
+      path_prefix: "/api/v1/http/"
+    filters:
+      - type: strip_prefix
+        args:
+          prefix: "/api/v1/http"
+      - type: header_set
+        args:
+          key: "x-gw"
+          value: "nova"
+    upstream:
+      cluster: user-http
+      timeout_ms: 30000
+
+  - name: http_to_grpc_json
+    match:
+      methods: ["POST"]
+      path: "/api/v1/user/get"
+      headers:
+        - name: "content-type"
+          contains: "application/json"
+    filters:
+      - type: header_set
+        args:
+          key: "content-type"
+          value: "application/json"
+    upstream:
+      cluster: user-grpc
+      grpc:
+        service: "user.v1.UserService"
+        method: "GetUser"
+        request:
+          mode: "json_to_proto"
+          proto: "user.v1.GetUserRequest"
+        response:
+          mode: "proto_to_json"
+
+  - name: http_to_dubbo
+    match:
+      methods: ["POST"]
+      path: "/api/v1/order/create"
+    upstream:
+      cluster: order-dubbo
+      dubbo:
+        interface: "com.foo.order.OrderService"
+        method: "CreateOrder"
+        param_types: ["com.foo.order.CreateOrderRequest"]
+        request:
+          mode: "json_to_hessian"
+        response:
+          mode: "hessian_to_json"
+
+logging:
+  level: info
+  format: json
+
+rate_limit:
+  enabled: false
+  rate: 100
+  window: 1m
+
+auth:
+  api_key:
+    enabled: false
+    keys: {}
+
+admin:
+  enabled: false
+  listen: ":9090"
