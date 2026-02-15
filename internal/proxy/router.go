@@ -76,9 +76,15 @@ func (r *Router) Reload(routes []config.Route) {
 	)
 }
 
+// MatchResult contains the result of a route match.
+type MatchResult struct {
+	Upstream string
+	Route    config.Route
+}
+
 // Match finds the best matching route for a request.
-// Returns the upstream name and whether a match was found.
-func (r *Router) Match(req *http.Request) (string, bool) {
+// Returns the match result and whether a match was found.
+func (r *Router) Match(req *http.Request) (MatchResult, bool) {
 	host := req.Host
 	// Strip port from host if present
 	if idx := strings.LastIndex(host, ":"); idx != -1 {
@@ -90,13 +96,13 @@ func (r *Router) Match(req *http.Request) (string, bool) {
 	exact := *r.exact.Load()
 	key := routeKey(host, path)
 	if entry, ok := exact[key]; ok {
-		return entry.upstream, true
+		return MatchResult{Upstream: entry.upstream, Route: entry.route}, true
 	}
 	// Also try without host for wildcard routes
 	if host != "" {
 		key = routeKey("", path)
 		if entry, ok := exact[key]; ok {
-			return entry.upstream, true
+			return MatchResult{Upstream: entry.upstream, Route: entry.route}, true
 		}
 	}
 
@@ -107,11 +113,11 @@ func (r *Router) Match(req *http.Request) (string, bool) {
 			continue
 		}
 		if strings.HasPrefix(path, pe.prefix) {
-			return pe.entry.upstream, true
+			return MatchResult{Upstream: pe.entry.upstream, Route: pe.entry.route}, true
 		}
 	}
 
-	return "", false
+	return MatchResult{}, false
 }
 
 func routeKey(host, path string) string {

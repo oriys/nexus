@@ -56,6 +56,45 @@ func Validate(cfg *Config) error {
 				return fmt.Errorf("route %q paths[%d].type must be 'exact' or 'prefix', got %q", r.Name, j, p.Type)
 			}
 		}
+		if err := validateRewrite(r.Name, r.Rewrite); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateRewrite validates the rewrite rules for a route.
+func validateRewrite(routeName string, rw *RewriteRule) error {
+	if rw == nil {
+		return nil
+	}
+
+	switch rw.Protocol {
+	case "", "http":
+		// valid, http is default
+	case "grpc":
+		if rw.GRPC == nil {
+			return fmt.Errorf("route %q: grpc rewrite requires grpc configuration", routeName)
+		}
+		if rw.GRPC.Service == "" {
+			return fmt.Errorf("route %q: grpc.service is required", routeName)
+		}
+		if rw.GRPC.Method == "" {
+			return fmt.Errorf("route %q: grpc.method is required", routeName)
+		}
+	case "dubbo":
+		if rw.Dubbo == nil {
+			return fmt.Errorf("route %q: dubbo rewrite requires dubbo configuration", routeName)
+		}
+		if rw.Dubbo.Service == "" {
+			return fmt.Errorf("route %q: dubbo.service is required", routeName)
+		}
+		if rw.Dubbo.Method == "" {
+			return fmt.Errorf("route %q: dubbo.method is required", routeName)
+		}
+	default:
+		return fmt.Errorf("route %q: unsupported rewrite protocol %q, must be 'http', 'grpc', or 'dubbo'", routeName, rw.Protocol)
 	}
 
 	return nil
