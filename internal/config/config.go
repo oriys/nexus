@@ -15,6 +15,8 @@ type Config struct {
 	Listeners []Listener      `yaml:"listeners,omitempty"`
 	Clusters  []Cluster       `yaml:"clusters,omitempty"`
 	RoutesV2  []RouteV2       `yaml:"routes_v2,omitempty"`
+	// PluginMode enables the ShenYu-style plugin chain handler.
+	PluginMode bool `yaml:"plugin_mode,omitempty"`
 }
 
 // ServerConfig defines the HTTP server settings.

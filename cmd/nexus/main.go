@@ -14,6 +14,7 @@ import (
 	"github.com/oriys/nexus/internal/config"
 	"github.com/oriys/nexus/internal/health"
 	"github.com/oriys/nexus/internal/middleware"
+	"github.com/oriys/nexus/internal/plugin"
 	"github.com/oriys/nexus/internal/proxy"
 	"github.com/oriys/nexus/internal/ratelimit"
 	"github.com/oriys/nexus/internal/runtime"
@@ -110,6 +111,14 @@ func main() {
 	var baseHandler http.Handler
 	if useV2 {
 		baseHandler = runtime.NewGateway(configStore)
+	} else if cfg.PluginMode {
+		// ShenYu-style plugin chain handler
+		pluginChain := plugin.NewChain(
+			plugin.NewGlobalLogPlugin(),
+			plugin.NewHttpProxyPlugin(),
+		)
+		baseHandler = pluginChain.Handler()
+		slog.Info("plugin mode enabled")
 	} else {
 		baseHandler = proxy.NewProxy(router, upstreamMgr)
 	}
