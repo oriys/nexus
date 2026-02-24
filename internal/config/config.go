@@ -149,12 +149,13 @@ type Listener struct {
 // Cluster defines an upstream cluster with protocol-specific settings.
 type Cluster struct {
 	Name      string            `yaml:"name"`
-	Type      string            `yaml:"type"` // "http", "grpc", "dubbo"
+	Type      string            `yaml:"type"` // "http", "grpc", "dubbo", "graphql"
 	Endpoints []ClusterEndpoint `yaml:"endpoints"`
 	LB        string            `yaml:"lb"` // "round_robin", "pick_first"
 	Keepalive *KeepaliveConfig  `yaml:"keepalive,omitempty"`
 	GRPC      *ClusterGRPC      `yaml:"grpc,omitempty"`
 	Dubbo     *ClusterDubbo     `yaml:"dubbo,omitempty"`
+	GraphQL   *ClusterGraphQL   `yaml:"graphql,omitempty"`
 }
 
 // ClusterEndpoint defines a single endpoint in a cluster.
@@ -182,6 +183,12 @@ type ClusterDubbo struct {
 	Group         string `yaml:"group"`
 	Version       string `yaml:"version"`
 	Serialization string `yaml:"serialization"`
+}
+
+// ClusterGraphQL defines GraphQL-specific cluster settings.
+type ClusterGraphQL struct {
+	// MaxBodyBytes limits the maximum size of the GraphQL request body (0 = no limit).
+	MaxBodyBytes int64 `yaml:"max_body_bytes,omitempty"`
 }
 
 // RouteV2 defines a route in the new DSL format.
@@ -215,10 +222,11 @@ type RouteFilter struct {
 
 // RouteUpstream defines the upstream destination for a route.
 type RouteUpstream struct {
-	Cluster   string              `yaml:"cluster"`
-	TimeoutMs int                 `yaml:"timeout_ms,omitempty"`
-	GRPC      *RouteUpstreamGRPC  `yaml:"grpc,omitempty"`
-	Dubbo     *RouteUpstreamDubbo `yaml:"dubbo,omitempty"`
+	Cluster   string                `yaml:"cluster"`
+	TimeoutMs int                   `yaml:"timeout_ms,omitempty"`
+	GRPC      *RouteUpstreamGRPC    `yaml:"grpc,omitempty"`
+	Dubbo     *RouteUpstreamDubbo   `yaml:"dubbo,omitempty"`
+	GraphQL   *RouteUpstreamGraphQL `yaml:"graphql,omitempty"`
 }
 
 // RouteUpstreamGRPC defines gRPC-specific upstream settings for a route.
@@ -236,6 +244,12 @@ type RouteUpstreamDubbo struct {
 	ParamTypes []string       `yaml:"param_types,omitempty"`
 	Request    *TranscodeMode `yaml:"request,omitempty"`
 	Response   *TranscodeMode `yaml:"response,omitempty"`
+}
+
+// RouteUpstreamGraphQL defines GraphQL-specific upstream settings for a route.
+type RouteUpstreamGraphQL struct {
+	// Endpoint is the path on the upstream that serves GraphQL (default: "/graphql").
+	Endpoint string `yaml:"endpoint,omitempty"`
 }
 
 // TranscodeMode defines transcoding settings.

@@ -250,19 +250,84 @@ func (u *DubboUpstream) Handle(w http.ResponseWriter, r *http.Request, route *Co
 	return nil
 }
 
+// GraphQLUpstream handles HTTP-to-GraphQL proxying.
+// It forwards requests to the upstream GraphQL endpoint, ensuring the correct
+// path and content-type are set for GraphQL operations.
+type GraphQLUpstream struct{}
+
+// Handle proxies the request to the GraphQL upstream.
+func (u *GraphQLUpstream) Handle(w http.ResponseWriter, r *http.Request, route *CompiledRoute, cluster *CompiledCluster) error {
+	ep, ok := cluster.NextEndpoint()
+	if !ok {
+		return fmt.Errorf("no endpoints available for cluster %s", cluster.Name)
+	}
+
+	addr := EndpointAddress(ep)
+	target, err := url.Parse(addr)
+	if err != nil {
+		return fmt.Errorf("invalid upstream target %s: %w", addr, err)
+	}
+	if target.Scheme == "" {
+		target, err = url.Parse("http://" + addr)
+		if err != nil {
+			return fmt.Errorf("invalid upstream target %s: %w", addr, err)
+		}
+	}
+
+	// Determine the GraphQL endpoint path
+	gqlPath := "/graphql"
+	if gqlCfg := route.Upstream.GraphQL; gqlCfg != nil && gqlCfg.Endpoint != "" {
+		gqlPath = gqlCfg.Endpoint
+	}
+
+	// Rewrite the request path to the GraphQL endpoint
+	r.URL.Path = gqlPath
+	r.URL.RawPath = ""
+
+	// GraphQL over HTTP only supports GET and POST methods
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		return fmt.Errorf("unsupported HTTP method %s for GraphQL upstream (only GET and POST are allowed)", r.Method)
+	}
+
+	// Ensure Content-Type is set for GraphQL
+	if ct := r.Header.Get("Content-Type"); ct == "" {
+		r.Header.Set("Content-Type", "application/json")
+	}
+
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(target)
+			pr.Out.Host = r.Host
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			slog.Error("graphql proxy error",
+				slog.String("cluster", cluster.Name),
+				slog.String("target", addr),
+				slog.String("error", err.Error()),
+			)
+			http.Error(w, "bad gateway", http.StatusBadGateway)
+		},
+	}
+
+	proxy.ServeHTTP(w, r)
+	return nil
+}
+
 // UpstreamDispatcher dispatches requests to the appropriate upstream handler based on cluster type.
 type UpstreamDispatcher struct {
-	httpUpstream  *HTTPUpstream
-	grpcUpstream  *GRPCUpstream
-	dubboUpstream *DubboUpstream
+	httpUpstream    *HTTPUpstream
+	grpcUpstream    *GRPCUpstream
+	dubboUpstream   *DubboUpstream
+	graphqlUpstream *GraphQLUpstream
 }
 
 // NewUpstreamDispatcher creates a new UpstreamDispatcher.
 func NewUpstreamDispatcher() *UpstreamDispatcher {
 	return &UpstreamDispatcher{
-		httpUpstream:  &HTTPUpstream{},
-		grpcUpstream:  &GRPCUpstream{},
-		dubboUpstream: &DubboUpstream{},
+		httpUpstream:    &HTTPUpstream{},
+		grpcUpstream:    &GRPCUpstream{},
+		dubboUpstream:   &DubboUpstream{},
+		graphqlUpstream: &GraphQLUpstream{},
 	}
 }
 
@@ -273,6 +338,8 @@ func (d *UpstreamDispatcher) Dispatch(w http.ResponseWriter, r *http.Request, ro
 		return d.grpcUpstream.Handle(w, r, route, cluster)
 	case "dubbo":
 		return d.dubboUpstream.Handle(w, r, route, cluster)
+	case "graphql":
+		return d.graphqlUpstream.Handle(w, r, route, cluster)
 	default:
 		return d.httpUpstream.Handle(w, r, route, cluster)
 	}

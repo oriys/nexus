@@ -605,3 +605,81 @@ func TestGateway_ClusterNotFound(t *testing.T) {
 		t.Errorf("expected 502, got %d", w.Code)
 	}
 }
+
+func TestCompile_GraphQLRoute(t *testing.T) {
+	cfg := &config.Config{
+		Clusters: []config.Cluster{
+			{
+				Name: "graphql-svc",
+				Type: "graphql",
+				Endpoints: []config.ClusterEndpoint{
+					{URL: "http://graphql-svc:8080"},
+				},
+				GraphQL: &config.ClusterGraphQL{
+					MaxBodyBytes: 1048576,
+				},
+			},
+		},
+		RoutesV2: []config.RouteV2{
+			{
+				Name: "graphql_proxy",
+				Match: config.RouteMatch{
+					Methods:    []string{"POST", "GET"},
+					PathPrefix: "/graphql",
+				},
+				Upstream: config.RouteUpstream{
+					Cluster: "graphql-svc",
+					GraphQL: &config.RouteUpstreamGraphQL{
+						Endpoint: "/graphql",
+					},
+				},
+			},
+		},
+	}
+
+	compiled, err := Compile(cfg, 4)
+	if err != nil {
+		t.Fatalf("compile error: %v", err)
+	}
+
+	// Test route matching
+	req := httptest.NewRequest("POST", "/graphql", nil)
+	route, matched := compiled.Router.Match(req)
+	if !matched {
+		t.Fatal("expected match")
+	}
+	if route.Name != "graphql_proxy" {
+		t.Errorf("expected route graphql_proxy, got %s", route.Name)
+	}
+	if route.Upstream.ClusterName != "graphql-svc" {
+		t.Errorf("expected cluster graphql-svc, got %s", route.Upstream.ClusterName)
+	}
+	if route.Upstream.GraphQL == nil {
+		t.Fatal("expected GraphQL upstream config")
+	}
+	if route.Upstream.GraphQL.Endpoint != "/graphql" {
+		t.Errorf("expected endpoint /graphql, got %s", route.Upstream.GraphQL.Endpoint)
+	}
+
+	// Verify cluster config
+	cluster := compiled.Clusters["graphql-svc"]
+	if cluster == nil {
+		t.Fatal("cluster graphql-svc not found")
+	}
+	if cluster.Type != "graphql" {
+		t.Errorf("expected type graphql, got %s", cluster.Type)
+	}
+	if cluster.GraphQL == nil {
+		t.Fatal("expected GraphQL cluster config")
+	}
+	if cluster.GraphQL.MaxBodyBytes != 1048576 {
+		t.Errorf("expected max_body_bytes 1048576, got %d", cluster.GraphQL.MaxBodyBytes)
+	}
+
+	// GET should also match
+	req = httptest.NewRequest("GET", "/graphql", nil)
+	_, matched = compiled.Router.Match(req)
+	if !matched {
+		t.Error("expected GET to match graphql route")
+	}
+}
