@@ -152,7 +152,7 @@ func TestChain_Handler(t *testing.T) {
 }
 
 func TestChain_HandlerErrorReturns500(t *testing.T) {
-	p := &stubPlugin{name: "fail", order: 10, err: errors.New("boom"), skipNext: true}
+	p := &stubPlugin{name: "fail", order: 10, err: errors.New("boom")}
 	chain := NewChain(p)
 	handler := chain.Handler()
 

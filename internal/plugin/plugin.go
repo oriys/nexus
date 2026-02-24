@@ -4,6 +4,7 @@
 package plugin
 
 import (
+	"log/slog"
 	"net/http"
 	"sort"
 )
@@ -91,8 +92,12 @@ func (c *Chain) Handler() http.Handler {
 			Attributes:     make(map[string]interface{}),
 		}
 		if err := c.Execute(ctx); err != nil {
-			// If no response was written yet, return 500.
-			http.Error(w, "internal plugin error", http.StatusInternalServerError)
+			slog.Error("plugin chain error",
+				slog.String("path", r.URL.Path),
+				slog.String("method", r.Method),
+				slog.String("error", err.Error()),
+			)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
 		}
 	})
 }
